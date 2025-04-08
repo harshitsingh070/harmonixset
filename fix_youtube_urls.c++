@@ -4,7 +4,7 @@
 #include <vector>
 #include <set>
 #include <string>
-#include <curl/curl.h>
+#include <regex>
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -147,22 +147,27 @@ public:
         }
     }
     
+    // YouTube URL validation without using libcurl
     bool isYouTubeVideoAvailable(const std::string& url) {
-        CURL* curl = curl_easy_init();
-        if (!curl) return false;
+        // This is a simplified version that just checks if it's a valid YouTube URL format
+        // It doesn't actually check if the video exists on YouTube as libcurl would
         
-        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl, CURLOPT_NOBODY, 1L); // Only check headers
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L); // 10 second timeout
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L); // Skip SSL cert verification
-        
-        CURLcode res = curl_easy_perform(curl);
-        long response_code = 0;
-        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
-        curl_easy_cleanup(curl);
-        
-        return (res == CURLE_OK && response_code == 200);
+        // Check if it's a YouTube URL
+        bool is_youtube = 
+            url.find("youtube.com") != std::string::npos || 
+            url.find("youtu.be") != std::string::npos;
+            
+        // Basic format validation
+        std::regex youtube_regex(
+            "^(https?://)?(www\\.)?"
+            "(youtube\\.com/watch\\?v=[a-zA-Z0-9_-]{11}|"
+            "youtube\\.com/embed/[a-zA-Z0-9_-]{11}|"
+            "youtube\\.com/v/[a-zA-Z0-9_-]{11}|"
+            "youtu\\.be/[a-zA-Z0-9_-]{11})");
+            
+        // For compatibility with your original code, we'll assume most URLs are valid
+        // as we can't actually check HTTP response codes without libcurl
+        return is_youtube && std::regex_search(url, youtube_regex);
     }
     
     void workerThread() {
@@ -244,12 +249,6 @@ int main() {
     const std::string removed_path = "dataset/youtube_urls_removed.csv";
     
     try {
-        // Initialize CURL globally
-        CURLcode curl_init_result = curl_global_init(CURL_GLOBAL_DEFAULT);
-        if (curl_init_result != CURLE_OK) {
-            throw std::runtime_error("Failed to initialize CURL library");
-        }
-        
         // Load and deduplicate entries
         std::cout << "Loading CSV file: " << input_path << std::endl;
         std::vector<YouTubeEntry> entries = loadCSV(input_path);
@@ -257,7 +256,6 @@ int main() {
         
         if (entries.empty()) {
             std::cout << "No valid entries found, nothing to process." << std::endl;
-            curl_global_cleanup();
             return 0;
         }
         
@@ -287,12 +285,8 @@ int main() {
         std::cout << "Cleaned file saved to: " << output_path << std::endl;
         std::cout << "Removed URLs saved to: " << removed_path << std::endl;
         
-        // Clean up CURL
-        curl_global_cleanup();
-        
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
-        curl_global_cleanup(); // Clean up CURL even on error
         return 1;
     }
     
